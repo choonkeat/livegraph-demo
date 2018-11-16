@@ -1,0 +1,67 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>LiveGraph</title>
+</head>
+
+<body>
+<div id="root"></div>
+<script src="livegraph.js"></script>
+<script>
+  // https://stackoverflow.com/a/2117523
+  function uuidv4() {
+    return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+      (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+    )
+  }
+
+  var graphqlUrl   = '//' + window.location.host + '/graphql'
+  var graphqlWsUrl = 'ws://' + window.location.host + '/graphql'
+
+  var app = Elm.LiveGraph.init({
+    node: document.getElementById('root'),
+    flags: {
+      graphqlUrl: graphqlUrl,
+      uid: uuidv4()
+    }
+  })
+
+  var ws = {}
+  app.ports.websocketOut.subscribe(function(msg) {
+    try {
+      console.log('[js] send', msg);
+      ws.conn.send(msg);
+    } catch (e) {
+      console.log('[js] send fail', e); // e.g. ws.conn not established
+    }
+  });
+
+  function connectWebSocket(app, wsUrl, optionalProtocol) {
+    console.log('[js] connectWebSocket', wsUrl, optionalProtocol);
+    ws.conn = new WebSocket(wsUrl, optionalProtocol);
+    ws.conn.onopen = function (event) {
+        console.log('[js] connected', event);
+        app.ports.websocketConnected.send(event.timeStamp|0);
+    };
+    ws.conn.onmessage = function (event) {
+        console.log('[js] message', event);
+        app.ports.websocketIn.send(event.data);
+    };
+    ws.conn.onerror = function (event) {
+        console.log('[js] error', event);
+    };
+    ws.conn.onclose = function (event) {
+        console.log('[js] close', event);
+        ws.conn.onclose = null;
+        ws.conn = null;
+
+        setTimeout(function() {
+          connectWebSocket(app, wsUrl, optionalProtocol);
+        }, 1000);
+    };
+  }
+  connectWebSocket(app, graphqlWsUrl, 'graphql-ws');
+</script>
+</body>
+</html>
